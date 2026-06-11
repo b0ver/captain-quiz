@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Какой ты капитан?</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Яндекс.Метрика: tag.js c defer, стаб ym ставит вызовы в очередь до загрузки -->
+  <script src="https://mc.yandex.ru/metrika/tag.js" defer></script>
+  <script>
+    window.ym=window.ym||function(){(window.ym.a=window.ym.a||[]).push(arguments)};window.ym.l=1*new Date();
+    ym(109776427,'init',{clickmap:true,trackLinks:true,accurateTrackBounce:true});
+  </script>
+  <style> html,body{margin:0;background:#020617;-webkit-tap-highlight-color:transparent} </style>
+</head>
+<body>
+  <noscript><div><img src="https://mc.yandex.ru/watch/109776427" style="position:absolute;left:-9999px" alt=""></div></noscript>
+  <div id="root"></div>
+  <script type="text/babel" data-presets="react">
+    const { useState, useEffect } = React;
+
+    // Прямая ссылка на мини-апп для шеринга
+    const SHARE_LINK = "https://t.me/cabinmatch_bot/captain";
+    const CABINMATCH_LINK = "https://t.me/cabinmatch_bot/cabinmatch";
+
+    // Инициализация Telegram WebApp (безопасно работает и вне Telegram)
+    const tg = window.Telegram && window.Telegram.WebApp;
+    if (tg) {
+      tg.ready(); tg.expand();
+      try { tg.setHeaderColor("#020617"); tg.setBackgroundColor("#020617"); } catch (e) {}
+    }
+    const haptic = (s) => { try { tg && tg.HapticFeedback.impactOccurred(s); } catch (e) {} };
+
+    /* ===== Аналитика (как в CabinMatch): безопасная обёртка + атрибуция ===== */
+    const METRIKA_ID = 109776427;
+    const START_SOURCE = (() => { try { return (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) || "organic"; } catch (e) { return "organic"; } })();
+    const track = (goal, params) => {
+      try { if (typeof ym === "function") ym(METRIKA_ID, "reachGoal", goal, Object.assign({source: START_SOURCE}, params || {})); } catch (e) {}
+    };
+    const openLink = (url) => {
+      try { if (tg && tg.openTelegramLink) { tg.openTelegramLink(url); return; } } catch (e) {}
+      window.open(url, "_blank");
+    };
+    const goCabinMatch = (key) => {
+      track("quiz_to_cabinmatch");
+      openLink(CABINMATCH_LINK + "?startapp=quiz_" + key);
+    };
+
+    const shareResult = (text) => {
+      track("quiz_share");
+      const url = "https://t.me/share/url?url=" + encodeURIComponent(SHARE_LINK) +
+                  "&text=" + encodeURIComponent(text);
+      if (tg) tg.openTelegramLink(url); else window.open(url, "_blank");
+    };
+
+    const CAPTAINS = {
+      grey:{name:"Капитан Грэй",source:"«Алые паруса»",quote:"Чудо нужно делать своими руками.",accent:"text-sky-300",bar:"bg-sky-400",glow:"shadow-sky-500/30",desc:"Ты романтик и идеалист. Видишь большую картину там, где другие видят рутину, и ведёшь людей за мечтой — а потом сам же воплощаешь её в жизнь.",strong:["Вдохновляешь и веришь до конца","Видишь смысл и красоту","Превращаешь мечту в дело"],shadow:"Иногда мечта заслоняет трезвый расчёт — держи рядом штурмана.",course:"Твой курс — за горизонт, где сбываются обещания."},
+      vrungel:{name:"Капитан Врунгель",source:"«Приключения капитана Врунгеля»",quote:"Как вы яхту назовёте, так она и поплывёт.",accent:"text-amber-300",bar:"bg-amber-400",glow:"shadow-amber-500/30",desc:"Везучий балагур и импровизатор. План рождается по ходу дела, а обаяние и редкая удача вытаскивают тебя из любой передряги — да ещё с хорошей историей.",strong:["Не теряешься в хаосе","Заряжаешь команду оптимизмом","Находишь выход из ничего"],shadow:"Слишком много импровизации — и однажды удача возьмёт выходной.",course:"Твой курс — туда, где скучно не будет точно."},
+      tatarinov:{name:"Капитан Татаринов",source:"«Два капитана»",quote:"Бороться и искать, найти и не сдаваться.",accent:"text-red-300",bar:"bg-red-400",glow:"shadow-red-500/30",desc:"Первопроходец, одержимый большой целью. Если решил дойти — дойдёшь, чего бы это ни стоило. Тебя ведёт не выгода, а жажда открытия и верность данному слову.",strong:["Несгибаемое упорство","Идёшь первым в неизведанное","Верен цели и принципам"],shadow:"Цель может стоить слишком дорого — не забывай оглядываться на людей.",course:"Твой курс — туда, где ещё не ступала нога человека."},
+      nemo:{name:"Капитан Немо",source:"Жюль Верн / сов. фильм 1975",quote:"Подвижный в подвижном.",accent:"text-cyan-300",bar:"bg-cyan-400",glow:"shadow-cyan-500/30",desc:"Гений-одиночка. Сам себе закон, опираешься на ум и технологии, держишься особняком. Глубина и принципы вместо лишних слов — и собственный взгляд на справедливость.",strong:["Холодный острый ум","Независимость и самодостаточность","Верность своим принципам"],shadow:"Одиночество — твоя сила и твоя ловушка одновременно.",course:"Твой курс — в глубины, недоступные остальным."},
+      silver:{name:"Джон Сильвер",source:"«Остров сокровищ» (сов. мультфильм)",quote:"Деньги дерутся за нами следом.",accent:"text-violet-300",bar:"bg-violet-400",glow:"shadow-violet-500/30",desc:"Обаятельный хитрец-стратег. Играешь вдолгую, читаешь людей насквозь и всегда на шаг впереди. Очаруешь кого угодно — и выйдешь сухим из любой воды.",strong:["Видишь людей и мотивы","Мыслишь на много ходов вперёд","Неотразимое обаяние"],shadow:"Не заиграйся — даже союзники любят искренность.",course:"Твой курс — туда, где ставки высоки, а карты твои."},
+      blood:{name:"Капитан Блад",source:"Рафаэль Сабатини",quote:"Честь дороже золота.",accent:"text-rose-300",bar:"bg-rose-400",glow:"shadow-rose-500/30",desc:"Благородный авантюрист. Свободно обращаешься с правилами, но живёшь по собственному кодексу чести. Смелый, ловкий и справедливый — пират, которому можно доверять.",strong:["Смелость и находчивость","Свой твёрдый кодекс чести","Прирождённый лидер в бою"],shadow:"Принципы порой дороже здравого смысла — выбирай битвы.",course:"Твой курс — туда, где свобода стоит риска."},
+      grant:{name:"Капитан Грант",source:"«Дети капитана Гранта»",quote:"Своих не бросают.",accent:"text-emerald-300",bar:"bg-emerald-400",glow:"shadow-emerald-500/30",desc:"Защитник и опора. Ведёшь ради своих людей, берёшь ответственность на себя и идёшь до конца за команду. Надёжный, как якорь в шторм.",strong:["Заботишься о команде","Берёшь ответственность","Надёжен в любую бурю"],shadow:"Спасая всех, не забудь иногда спасать и себя.",course:"Твой курс — домой, и всех — живыми."},
+      larsen:{name:"Волк Ларсен",source:"Джек Лондон, «Морской волк»",quote:"Сильный пожирает слабого, чтобы остаться сильным.",accent:"text-zinc-300",bar:"bg-zinc-400",glow:"shadow-zinc-500/30",desc:"Просолённый морской волк. Жёсткая воля, железная дисциплина и философский ум. Вся жизнь — море; ты выкован им и не признаёшь полумер.",strong:["Несокрушимая воля","Опыт и хладнокровие","Держишь дисциплину"],shadow:"Твёрдость без тепла остужает даже верную команду.",course:"Твой курс — против ветра, как всегда."}
+    };
+    const ORDER = ["grey","vrungel","tatarinov","nemo","silver","blood","grant","larsen"];
+
+    const QUESTIONS = [
+      {q:"Шторм на горизонте. Твой первый ход?",tag:"Ситуация",a:[
+        {t:"Иду прямо в него — где трудно, там и интересно",p:{tatarinov:1,larsen:1}},
+        {t:"Спокойно рассчитываю курс в обход",p:{nemo:1,grant:1}},
+        {t:"Поднимаю команду и импровизирую — прорвёмся",p:{vrungel:1,blood:1}},
+        {t:"Верю, что пройдём, — держу мечту перед глазами",p:{grey:2}}]},
+      {q:"На борту конфликт. Как разруливаешь?",tag:"Ситуация",a:[
+        {t:"Слово капитана — закон. Дисциплина прежде всего",p:{larsen:1,nemo:1}},
+        {t:"Сажаю всех за стол и выслушиваю каждого",p:{grant:2}},
+        {t:"Перевожу в шутку и разряжаю обстановку",p:{vrungel:2}},
+        {t:"Тонко договариваюсь, чтобы вышло по-моему",p:{silver:1,blood:1}}]},
+      {q:"Подвернулась рискованная возможность — «сокровище».",tag:"Ситуация",a:[
+        {t:"Хватаю шанс, продумав хитрый план",p:{silver:1,blood:1}},
+        {t:"Иду, если это приближает к большой мечте",p:{tatarinov:1,grey:1}},
+        {t:"Сначала всё просчитаю в одиночку",p:{nemo:2}},
+        {t:"Только если команда останется в безопасности",p:{grant:1,larsen:1}}]},
+      {q:"Кризис: на борту кончаются припасы.",tag:"Ситуация",a:[
+        {t:"Изобрету выход из подручного — что-нибудь придумаю",p:{vrungel:1,nemo:1}},
+        {t:"Ввожу жёсткий режим экономии и порядок",p:{larsen:2}},
+        {t:"Делю последнее поровну, сам ем последним",p:{grant:2}},
+        {t:"Веду к цели — впереди обязательно будет берег",p:{tatarinov:1,grey:1}}]},
+      {q:"Чужой корабль терпит бедствие.",tag:"Ситуация",a:[
+        {t:"Конечно помочь, без всяких вопросов",p:{grant:1,grey:1}},
+        {t:"Помогу — но на своих условиях",p:{silver:1,blood:1}},
+        {t:"Трезво оценю риск: не подставлю своих",p:{larsen:1,nemo:1}},
+        {t:"Помогу с азартом — заодно будет история",p:{vrungel:1,blood:1}}]},
+      {q:"Команда вымоталась и хочет повернуть назад.",tag:"Ситуация",a:[
+        {t:"Назад дороги нет — найти и не сдаваться",p:{tatarinov:2}},
+        {t:"Даю отдых, забочусь о людях, потом продолжим",p:{grant:2}},
+        {t:"Поднимаю дух байкой и личным примером",p:{vrungel:1,grey:1}},
+        {t:"Решаю сам — объяснять не обязан",p:{nemo:1,larsen:1}}]},
+      {q:"Незнакомый порт. Как проводишь время на берегу?",tag:"Ситуация",a:[
+        {t:"В таверне, в центре внимания, новые знакомства",p:{vrungel:1,blood:1}},
+        {t:"Брожу один, наблюдаю и изучаю",p:{nemo:2}},
+        {t:"Завожу полезные связи, прощупываю, кто есть кто",p:{silver:2}},
+        {t:"Ищу следы своей мечты — карты, легенды, слухи",p:{tatarinov:1,grey:1}}]},
+      {q:"Зачем ты вообще вышел в море?",tag:"Характер",a:[
+        {t:"Ради мечты и красоты, которой больше нигде нет",p:{grey:2}},
+        {t:"Ради великого открытия — оставить след",p:{tatarinov:2}},
+        {t:"Ради свободы — никто мне не указ",p:{blood:1,nemo:1}},
+        {t:"Ради своих людей и приключений вместе",p:{grant:1,vrungel:1}}]},
+      {q:"Чего ты боишься больше всего?",tag:"Характер",a:[
+        {t:"Предать мечту, разучиться верить",p:{grey:2}},
+        {t:"Потерять свободу, зависеть от других",p:{nemo:1,blood:1}},
+        {t:"Не дойти, сдаться на полпути",p:{tatarinov:2}},
+        {t:"Потерять команду или показать слабость",p:{grant:1,larsen:1}}]},
+      {q:"Как ты принимаешь решения?",tag:"Характер",a:[
+        {t:"Сердцем — чувствую, как правильно",p:{grey:1,grant:1}},
+        {t:"Головой — холодный расчёт",p:{nemo:1,silver:1}},
+        {t:"Чутьём — импровизирую на ходу",p:{vrungel:1,blood:1}},
+        {t:"Волей — решил и иду до конца",p:{tatarinov:1,larsen:1}}]},
+      {q:"Что для тебя команда?",tag:"Характер",a:[
+        {t:"Семья, которую я берегу",p:{grant:1,grey:1}},
+        {t:"Инструмент для большой цели",p:{silver:1,tatarinov:1}},
+        {t:"Подчинённые, знающие своё место",p:{larsen:2}},
+        {t:"Компания для приключений и баек",p:{vrungel:1,blood:1}}]},
+      {q:"Твоя сильнейшая черта?",tag:"Характер",a:[
+        {t:"Вера и воображение",p:{grey:2}},
+        {t:"Упорство, которое не сломить",p:{tatarinov:1,larsen:1}},
+        {t:"Ум и хитрость",p:{nemo:1,silver:1}},
+        {t:"Обаяние и находчивость",p:{vrungel:1,blood:1}}]}
+    ];
+
+    function CaptainQuiz() {
+      const [screen, setScreen] = useState("intro");
+      const [cur, setCur] = useState(0);
+      const [answers, setAnswers] = useState([]);
+
+      const start = () => { track("quiz_start"); setAnswers([]); setCur(0); setScreen("quiz"); };
+      const choose = (ai) => {
+        haptic("light");
+        const next = [...answers]; next[cur] = ai; setAnswers(next);
+        if (cur < QUESTIONS.length - 1) setTimeout(() => setCur(cur + 1), 180);
+        else setTimeout(() => setScreen("result"), 180);
+      };
+      const back = () => { if (cur > 0) setCur(cur - 1); else setScreen("intro"); };
+
+      const tally = () => {
+        const s = Object.fromEntries(ORDER.map(k => [k, 0]));
+        answers.forEach((ai, qi) => { if (ai == null) return;
+          Object.entries(QUESTIONS[qi].a[ai].p).forEach(([k, v]) => s[k] += v); });
+        return s;
+      };
+      const ranked = () => {
+        const s = tally(); const total = Object.values(s).reduce((a, v) => a + v, 0) || 1;
+        return ORDER.map(k => ({ key: k, score: s[k], pct: Math.round(s[k] / total * 100) }))
+          .sort((a, b) => b.score - a.score);
+      };
+      const progress = ((cur + (answers[cur] != null ? 1 : 0)) / QUESTIONS.length) * 100;
+
+      // На показ результата: цель quiz_done + архетип в localStorage
+      // (оба аппа на одном origin b0ver.github.io — задел под психоскоринг)
+      useEffect(() => {
+        if (screen !== "result") return;
+        const key = ranked()[0].key;
+        try { localStorage.setItem("cm_archetype", JSON.stringify({captain: key, ts: new Date().toISOString().slice(0, 10)})); } catch (e) {}
+        track("quiz_done", {captain: key});
+      }, [screen]);
+
+      return (
+        <div className="min-h-screen w-full bg-gradient-to-b from-slate-950 via-slate-900 to-indigo-950 text-slate-100 flex items-center justify-center p-4">
+          <div className="w-full max-w-lg">
+            {screen === "intro" && (
+              <div className="text-center py-10">
+                <div className="text-5xl mb-5">⚓</div>
+                <h1 className="text-3xl sm:text-4xl font-bold mb-3">Какой ты <span className="text-amber-300">капитан</span>?</h1>
+                <p className="text-slate-300 mb-1 max-w-sm mx-auto">От Грэя до Немо, от Врунгеля до Татаринова — узнай, чей штурвал держишь именно ты.</p>
+                <p className="text-slate-400 text-sm mb-8">8 капитанов · 12 вопросов · 2 минуты</p>
+                <button onClick={start} className="inline-flex items-center gap-2 bg-amber-400 hover:bg-amber-300 text-slate-900 font-semibold px-8 py-3 rounded-full transition shadow-lg shadow-amber-500/30">🚢 Поднять паруса</button>
+              </div>
+            )}
+            {screen === "quiz" && (
+              <div>
+                <div className="flex items-center gap-3 mb-6">
+                  <button onClick={back} className="text-slate-400 hover:text-slate-100 text-xl shrink-0">‹</button>
+                  <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden">
+                    <div className="h-full bg-amber-400 rounded-full transition-all duration-300" style={{ width: progress + "%" }} />
+                  </div>
+                  <span className="text-xs text-slate-400 shrink-0">{cur + 1}/{QUESTIONS.length}</span>
+                </div>
+                <div className="mb-5">
+                  <span className="text-[11px] uppercase tracking-wider text-amber-300/80 mb-2 block">🌊 {QUESTIONS[cur].tag}</span>
+                  <h2 className="text-xl sm:text-2xl font-semibold leading-snug">{QUESTIONS[cur].q}</h2>
+                </div>
+                <div className="space-y-3">
+                  {QUESTIONS[cur].a.map((opt, i) => {
+                    const active = answers[cur] === i;
+                    return (
+                      <button key={i} onClick={() => choose(i)} className={"w-full text-left px-4 py-3.5 rounded-xl border transition group " + (active ? "border-amber-400 bg-amber-400/10" : "border-slate-700 bg-slate-800/40 hover:border-amber-400/60 hover:bg-slate-800")}>
+                        <span className="flex items-center gap-3">
+                          <span className={"shrink-0 w-7 h-7 rounded-full grid place-items-center text-sm font-semibold " + (active ? "bg-amber-400 text-slate-900" : "bg-slate-700 text-slate-300 group-hover:bg-slate-600")}>{String.fromCharCode(65 + i)}</span>
+                          <span className="text-slate-100">{opt.t}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {screen === "result" && (() => {
+              const r = ranked(); const top = CAPTAINS[r[0].key]; const others = r.slice(1, 4);
+              const shareText = "Я — " + top.name + " " + top.source + ". А какой капитан ты?";
+              return (
+                <div className="py-4">
+                  <p className="text-center text-slate-400 text-sm mb-1">Твой капитан —</p>
+                  <h1 className={"text-center text-3xl sm:text-4xl font-bold mb-1 " + top.accent}>{top.name}</h1>
+                  <p className="text-center text-slate-400 text-sm mb-5">{top.source}</p>
+                  <div className={"rounded-2xl border border-slate-700 bg-slate-800/50 p-5 mb-5 shadow-xl " + top.glow}>
+                    <p className={"italic text-center mb-4 " + top.accent}>«{top.quote}»</p>
+                    <p className="text-slate-200 leading-relaxed mb-4">{top.desc}</p>
+                    <p className="text-xs uppercase tracking-wider text-slate-400 mb-2">Сильные стороны</p>
+                    <ul className="space-y-1.5 mb-4">{top.strong.map((s, i) => (<li key={i} className="flex items-start gap-2 text-slate-200 text-sm"><span className={top.accent}>⚓</span> {s}</li>))}</ul>
+                    <p className="text-xs uppercase tracking-wider text-slate-400 mb-1">Подводный камень</p>
+                    <p className="text-slate-300 text-sm mb-4">{top.shadow}</p>
+                    <p className={"text-center font-medium " + top.accent}>{top.course}</p>
+                  </div>
+                  <p className="text-xs uppercase tracking-wider text-slate-400 mb-3">Также в тебе есть</p>
+                  <div className="space-y-2.5 mb-7">
+                    {others.map(o => { const c = CAPTAINS[o.key]; return (
+                      <div key={o.key} className="flex items-center gap-3">
+                        <span className="w-32 shrink-0 text-sm text-slate-300 truncate">{c.name}</span>
+                        <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden"><div className={"h-full rounded-full " + c.bar} style={{ width: o.pct + "%" }} /></div>
+                        <span className="text-xs text-slate-400 w-8 text-right">{o.pct}%</span>
+                      </div>); })}
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                    <button onClick={() => shareResult(shareText)} className="inline-flex items-center justify-center gap-2 bg-amber-400 hover:bg-amber-300 text-slate-900 font-medium px-6 py-3 rounded-full transition">↗ Поделиться</button>
+                    <button onClick={() => setScreen("intro")} className="inline-flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 text-slate-100 font-medium px-6 py-3 rounded-full transition">↺ Пройти заново</button>
+                  </div>
+                  <div className="mt-3 flex justify-center">
+                    <button onClick={() => goCabinMatch(r[0].key)} className="inline-flex items-center justify-center gap-2 w-full sm:w-auto border border-amber-400/70 text-amber-300 hover:bg-amber-400/10 font-medium px-6 py-3 rounded-full transition">⛵ Найти свой экипаж — CabinMatch</button>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      );
+    }
+    ReactDOM.createRoot(document.getElementById("root")).render(<CaptainQuiz />);
+  </script>
+</body>
+</html>
