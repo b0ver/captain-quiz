@@ -75,7 +75,7 @@ const haptic = s => {
 };
 
 /* ===== Аналитика (как в CabinMatch): безопасная обёртка + атрибуция ===== */
-const APP_VERSION = "S4.6-2026-06-11";
+const APP_VERSION = "S4.6.1-2026-06-11";
 const METRIKA_ID = 109776427;
 const START_SOURCE = (() => {
   try {
@@ -131,10 +131,22 @@ const submitToSheets = (type, fields) => {
 };
 
 // Публикация результата на стену ВК: только ShowWallPostBox (без scope wall),
-// окно нативное — пользователь сам подтверждает пост; отмена/реджект — молча
+// окно нативное — пользователь сам подтверждает пост.
+// Реджект (в т.ч. «Приложению недоступно создание постов») → фолбэк share.php:
+// стандартный диалог ВК, работает без прав приложения
 const postToWall = key => {
   const c = CAPTAINS[key];
-  if (!c || !vkb) return;
+  if (!c) return;
+  const wallFallback = () => {
+    track("wall_post_fallback", {
+      captain: key
+    });
+    window.open("https://vk.com/share.php?url=" + encodeURIComponent(VK_APP_LINK) + "&title=" + encodeURIComponent("Мой капитан — " + c.name + ". А какой капитан ты?"), "_blank");
+  };
+  if (!vkb) {
+    wallFallback();
+    return;
+  }
   const message = "Мой капитан — " + c.name + " (" + c.source + "). «" + c.quote + "» А какой капитан ты? Пройди тест: " + VK_APP_LINK;
   try {
     const p = vkb.send("VKWebAppShowWallPostBox", {
@@ -143,8 +155,10 @@ const postToWall = key => {
     });
     if (p && p.then) p.then(() => track("wall_post", {
       captain: key
-    })).catch(() => {});
-  } catch (e) {}
+    })).catch(wallFallback);
+  } catch (e) {
+    wallFallback();
+  }
 };
 const shareResult = text => {
   track("quiz_share");
