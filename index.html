@@ -8,6 +8,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
   <!-- Яндекс.Метрика: tag.js c defer, стаб ym ставит вызовы в очередь до загрузки -->
   <script src="https://mc.yandex.ru/metrika/tag.js" defer></script>
   <script>
@@ -29,8 +30,14 @@ const {
 const SHARE_LINK = "https://t.me/cabinmatch_bot/captain";
 const CABINMATCH_LINK = "https://t.me/cabinmatch_bot/cabinmatch";
 
+/* ===== Платформенный адаптер: один деплой обслуживает TG и VK ===== */
+const VK_APP_ID = "54633654";
+const VK_APP_LINK = "https://vk.com/app" + VK_APP_ID;
+const isVK = /[?&]vk_app_id=/.test(window.location && window.location.search || "");
 // Инициализация Telegram WebApp (безопасно работает и вне Telegram)
 const tg = window.Telegram && window.Telegram.WebApp;
+const isTG = !isVK && !!(tg && tg.initData);
+const PLATFORM = isVK ? "vk" : isTG ? "tg" : "web";
 if (tg) {
   tg.ready();
   tg.expand();
@@ -39,17 +46,43 @@ if (tg) {
     tg.setBackgroundColor("#020617");
   } catch (e) {}
 }
+const vkb = isVK && window.vkBridge || null;
+if (vkb) {
+  try {
+    const p = vkb.send("VKWebAppInit", {});
+    if (p && p.catch) p.catch(() => {});
+  } catch (e) {}
+  // тёмная тема уже в стилях — просим светлый текст статус-бара
+  try {
+    const p = vkb.send("VKWebAppSetViewSettings", {
+      status_bar_style: "light",
+      action_bar_color: "#020617"
+    });
+    if (p && p.catch) p.catch(() => {});
+  } catch (e) {}
+}
 const haptic = s => {
   try {
+    if (vkb) {
+      const p = vkb.send("VKWebAppTapticImpactOccurred", {
+        style: "light"
+      });
+      if (p && p.catch) p.catch(() => {});
+      return;
+    }
     tg && tg.HapticFeedback.impactOccurred(s);
   } catch (e) {}
 };
 
 /* ===== Аналитика (как в CabinMatch): безопасная обёртка + атрибуция ===== */
-const APP_VERSION = "S4-2026-06-11";
+const APP_VERSION = "S4.5-2026-06-11";
 const METRIKA_ID = 109776427;
 const START_SOURCE = (() => {
   try {
+    if (isVK) {
+      const m = (window.location && window.location.search || "").match(/[?&]vk_ref=([^&]+)/);
+      return m ? decodeURIComponent(m[1]) : "vk";
+    }
     return tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param || "organic";
   } catch (e) {
     return "organic";
@@ -58,13 +91,14 @@ const START_SOURCE = (() => {
 const track = (goal, params) => {
   try {
     if (typeof ym === "function") ym(METRIKA_ID, "reachGoal", goal, Object.assign({
-      source: START_SOURCE
+      source: START_SOURCE,
+      platform: PLATFORM
     }, params || {}));
   } catch (e) {}
 };
 const openLink = url => {
   try {
-    if (tg && tg.openTelegramLink) {
+    if (!isVK && tg && tg.openTelegramLink) {
       tg.openTelegramLink(url);
       return;
     }
@@ -97,6 +131,20 @@ const submitToSheets = (type, fields) => {
 };
 const shareResult = text => {
   track("quiz_share");
+  if (isVK) {
+    const vkFallback = () => window.open("https://vk.com/share.php?url=" + encodeURIComponent(VK_APP_LINK) + "&title=" + encodeURIComponent(text), "_blank");
+    try {
+      if (vkb) {
+        const p = vkb.send("VKWebAppShare", {
+          link: VK_APP_LINK
+        });
+        if (p && p.catch) p.catch(vkFallback);
+      } else vkFallback();
+    } catch (e) {
+      vkFallback();
+    }
+    return;
+  }
   const url = "https://t.me/share/url?url=" + encodeURIComponent(SHARE_LINK) + "&text=" + encodeURIComponent(text);
   if (tg) tg.openTelegramLink(url);else window.open(url, "_blank");
 };
@@ -579,6 +627,7 @@ function CaptainQuiz() {
       tg_id: user && user.id || null,
       tg_username: user && user.username || null,
       source: START_SOURCE,
+      platform: PLATFORM,
       app_version: APP_VERSION
     });
   }, [screen]);
