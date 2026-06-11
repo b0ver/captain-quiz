@@ -75,7 +75,7 @@ const haptic = s => {
 };
 
 /* ===== Аналитика (как в CabinMatch): безопасная обёртка + атрибуция ===== */
-const APP_VERSION = "S4.6.1-2026-06-11";
+const APP_VERSION = "S4.7-2026-06-11";
 const METRIKA_ID = 109776427;
 const START_SOURCE = (() => {
   try {
@@ -158,6 +158,153 @@ const postToWall = key => {
     })).catch(wallFallback);
   } catch (e) {
     wallFallback();
+  }
+};
+
+/* ===== Стори-карточка ВК (общая рисовалка: браузер + deploy-генератор) ===== */
+const STORY_W = 1080,
+  STORY_H = 1920;
+const PAGES_STORY_BASE = "https://b0ver.github.io/captain-quiz/story/";
+const ACCENT_HEX = {
+  "text-sky-300": "#7dd3fc",
+  "text-amber-300": "#fcd34d",
+  "text-red-300": "#fca5a5",
+  "text-cyan-300": "#67e8f9",
+  "text-violet-300": "#c4b5fd",
+  "text-rose-300": "#fda4af",
+  "text-emerald-300": "#6ee7b9",
+  "text-zinc-300": "#d4d4d8"
+};
+// Чистая функция: текст результата в свободной зоне фона (y 800–1500),
+// перенос по словам, цитата ужимается по кеглю (мин. 30px), всё по центру.
+// Возвращает нижнюю границу текста. Извлекается deploy-генератором как есть.
+function drawStoryCard(ctx, bg, c, accent) {
+  var FONT = "Arial, 'Helvetica Neue', sans-serif";
+  ctx.drawImage(bg, 0, 0, STORY_W, STORY_H);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  var cx = STORY_W / 2,
+    bottom = 1500,
+    y = 820,
+    i;
+  function wrap(text, font, maxW) {
+    ctx.font = font;
+    var words = String(text).split(/\s+/),
+      lines = [],
+      cur = "";
+    for (var j = 0; j < words.length; j++) {
+      var t = cur ? cur + " " + words[j] : words[j];
+      if (ctx.measureText(t).width > maxW && cur) {
+        lines.push(cur);
+        cur = words[j];
+      } else cur = t;
+    }
+    if (cur) lines.push(cur);
+    return lines;
+  }
+  ctx.fillStyle = "#cbd5e1";
+  ctx.font = "44px " + FONT;
+  ctx.fillText("Мой капитан —", cx, y);
+  y += 44 + 36;
+  var nameSize = 96,
+    nameLines;
+  for (;;) {
+    nameLines = wrap(c.name, "bold " + nameSize + "px " + FONT, 940);
+    if (nameLines.length <= 2 || nameSize <= 64) break;
+    nameSize -= 8;
+  }
+  ctx.fillStyle = accent;
+  ctx.font = "bold " + nameSize + "px " + FONT;
+  for (i = 0; i < nameLines.length; i++) {
+    ctx.fillText(nameLines[i], cx, y);
+    y += Math.round(nameSize * 1.15);
+  }
+  y += 18;
+  var srcLines = wrap(c.source, "40px " + FONT, 900);
+  ctx.fillStyle = "#94a3b8";
+  ctx.font = "40px " + FONT;
+  for (i = 0; i < srcLines.length; i++) {
+    ctx.fillText(srcLines[i], cx, y);
+    y += 52;
+  }
+  y += 46;
+  var quote = "«" + c.quote + "»",
+    qs = 54,
+    qLines;
+  for (;;) {
+    qLines = wrap(quote, "italic " + qs + "px " + FONT, 880);
+    if (y + qLines.length * Math.round(qs * 1.35) <= bottom || qs <= 30) break;
+    qs -= 4;
+  }
+  ctx.fillStyle = "#e2e8f0";
+  ctx.font = "italic " + qs + "px " + FONT;
+  for (i = 0; i < qLines.length; i++) {
+    ctx.fillText(qLines[i], cx, y);
+    y += Math.round(qs * 1.35);
+  }
+  return y;
+}
+/* ===== конец стори-рисовалки ===== */
+var storyBg = null,
+  storyBgRequested = false;
+const preloadStoryBg = () => {
+  // грузим фон при показе результата — клик не ждёт сеть
+  if (storyBgRequested) return;
+  storyBgRequested = true;
+  try {
+    const img = new Image();
+    img.onload = () => {
+      storyBg = img;
+    };
+    img.src = "story_bg_1080x1920.png";
+  } catch (e) {}
+};
+const renderStoryCard = key => {
+  const c = CAPTAINS[key];
+  if (!c || !storyBg) return null;
+  try {
+    const cv = document.createElement("canvas");
+    cv.width = STORY_W;
+    cv.height = STORY_H;
+    const ctx = cv.getContext("2d");
+    drawStoryCard(ctx, storyBg, c, ACCENT_HEX[c.accent] || "#fcd34d");
+    return cv.toDataURL("image/png");
+  } catch (e) {
+    return null;
+  }
+};
+const shareStory = key => {
+  if (!vkb || !CAPTAINS[key]) return;
+  const params = url => ({
+    background_type: "image",
+    url: url,
+    attachment: {
+      type: "url",
+      url: VK_APP_LINK,
+      text: "go_to"
+    }
+  });
+  const sendStatic = () => {
+    // фолбэк: статичная карточка архетипа, сгенерированная при деплое
+    try {
+      const p = vkb.send("VKWebAppShowStoryBox", params(PAGES_STORY_BASE + key + ".png"));
+      if (p && p.then) p.then(() => track("story_share", {
+        captain: key
+      })).catch(() => {});
+    } catch (e) {}
+  };
+  const dataUrl = renderStoryCard(key);
+  if (!dataUrl) {
+    sendStatic();
+    return;
+  }
+  try {
+    const p = vkb.send("VKWebAppShowStoryBox", params(dataUrl));
+    if (p && p.then) p.then(() => track("story_share", {
+      captain: key
+    })).catch(sendStatic); // клиент не принял base64
+  } catch (e) {
+    sendStatic();
   }
 };
 const shareResult = text => {
@@ -642,6 +789,7 @@ function CaptainQuiz() {
   // (оба аппа на одном origin b0ver.github.io — задел под психоскоринг)
   useEffect(() => {
     if (screen !== "result") return;
+    if (isVK) preloadStoryBg();
     const key = ranked()[0].key;
     try {
       localStorage.setItem("cm_archetype", JSON.stringify({
@@ -779,7 +927,10 @@ function CaptainQuiz() {
     }, "\u2197 \u041F\u043E\u0434\u0435\u043B\u0438\u0442\u044C\u0441\u044F"), isVK && /*#__PURE__*/React.createElement("button", {
       onClick: () => postToWall(r[0].key),
       className: "inline-flex items-center justify-center gap-2 bg-amber-400/10 border border-amber-400/60 text-amber-300 hover:bg-amber-400/20 font-medium px-6 py-3 rounded-full transition"
-    }, "\u041E\u043F\u0443\u0431\u043B\u0438\u043A\u043E\u0432\u0430\u0442\u044C \u0443 \u0441\u0435\u0431\u044F \u043D\u0430 \u0441\u0442\u0435\u043D\u0435"), /*#__PURE__*/React.createElement("button", {
+    }, "\u041E\u043F\u0443\u0431\u043B\u0438\u043A\u043E\u0432\u0430\u0442\u044C \u0443 \u0441\u0435\u0431\u044F \u043D\u0430 \u0441\u0442\u0435\u043D\u0435"), isVK && /*#__PURE__*/React.createElement("button", {
+      onClick: () => shareStory(r[0].key),
+      className: "inline-flex items-center justify-center gap-2 bg-amber-400/10 border border-amber-400/60 text-amber-300 hover:bg-amber-400/20 font-medium px-6 py-3 rounded-full transition"
+    }, "\u0412 \u0438\u0441\u0442\u043E\u0440\u0438\u044E"), /*#__PURE__*/React.createElement("button", {
       onClick: () => setScreen("intro"),
       className: "inline-flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 text-slate-100 font-medium px-6 py-3 rounded-full transition"
     }, "\u21BA \u041F\u0440\u043E\u0439\u0442\u0438 \u0437\u0430\u043D\u043E\u0432\u043E")), /*#__PURE__*/React.createElement("div", {
